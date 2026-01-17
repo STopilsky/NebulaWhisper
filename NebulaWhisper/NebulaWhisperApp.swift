@@ -1,17 +1,31 @@
-//
-//  NebulaWhisperApp.swift
-//  NebulaWhisper
-//
-//  Created by Сергей Топильский on 02.01.2026.
-//
-
 import SwiftUI
 
 @main
 struct NebulaWhisperApp: App {
+
+    @AppStorage("didFinishOnboarding") private var didFinishOnboarding: Bool = false
+    @AppStorage("didAskNotifications") private var didAskNotifications: Bool = false
+
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if !didFinishOnboarding {
+                OnboardingView {
+                    didFinishOnboarding = true
+                }
+            } else if !didAskNotifications {
+                NotificationPromptView(
+                    onEnable: {
+                        didAskNotifications = true
+                        NotificationManager.requestPermissionAndSchedule()
+                    },
+                    onSkip: {
+                        didAskNotifications = true
+                    }
+                )
+            } else {
+                ContentView()
+            }
         }
     }
 }
