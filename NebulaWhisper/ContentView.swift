@@ -1,4 +1,32 @@
 import SwiftUI
+import CoreMotion
+import Combine
+
+final class MotionParallax: ObservableObject {
+    @Published var offset: CGSize = .zero
+    private let manager = CMMotionManager()
+
+    func start() {
+        guard manager.isDeviceMotionAvailable else { return }
+        manager.deviceMotionUpdateInterval = 1.0 / 60.0
+        manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+            guard let motion else { return }
+            let roll = motion.attitude.roll
+            let pitch = motion.attitude.pitch
+            let maxTilt = 0.35
+            let maxShift: CGFloat = 8
+            let normX = max(-1.0, min(1.0, roll / maxTilt))
+            let normY = max(-1.0, min(1.0, pitch / maxTilt))
+            let x = CGFloat(normX) * maxShift
+            let y = CGFloat(normY) * maxShift
+            self?.offset = CGSize(width: x, height: y)
+        }
+    }
+
+    func stop() {
+        manager.stopDeviceMotionUpdates()
+    }
+}
 
 struct ContentView: View {
 
@@ -8,6 +36,7 @@ struct ContentView: View {
     @State private var didAppear = false
     @State private var planetFloat = false
     @State private var budFloat = false
+    @StateObject private var parallax = MotionParallax()
 
     private let noteKeys: [String] = (1...120).map { String(format: "note_%03d", $0) }
     private let storage = UserDefaults.standard
@@ -116,7 +145,10 @@ struct ContentView: View {
                             .scaledToFit()
                             .frame(width: planetSize, height: planetSize)
                             .opacity(0.95)
-                            .offset(x: -6, y: planetFloat ? -7 : 7)
+                            .offset(
+                                x: -6 + parallax.offset.width * 0.35,
+                                y: (planetFloat ? -7 : 7) + parallax.offset.height * 0.35
+                            )
                             .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true),
                                        value: planetFloat)
                         Spacer()
@@ -135,6 +167,8 @@ struct ContentView: View {
                         .font(.system(size: 30, weight: .medium))
                         .foregroundColor(ink)
                         .padding(.bottom, 22)
+                        .offset(x: parallax.offset.width * 0.18,
+                                y: parallax.offset.height * 0.18)
 
                     Text(todaysNote)
                         .font(.system(size: 30, weight: .light, design: .default))
@@ -144,12 +178,16 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, leftInset)
                         .padding(.bottom, 16)
+                        .offset(x: parallax.offset.width * 0.2,
+                                y: parallax.offset.height * 0.2)
                         .opacity(didAppear ? 1.0 : 0.0)
                         .animation(.easeOut(duration: 0.6), value: didAppear)
 
                     Text(todaysDateText)
                         .font(.system(size: 14, weight: .regular))
                         .foregroundColor(ink)
+                        .offset(x: parallax.offset.width * 0.12,
+                                y: parallax.offset.height * 0.12)
                         .opacity(didAppear ? 0.7 : 0.0)
                         .animation(.easeOut(duration: 0.6).delay(0.15), value: didAppear)
 
@@ -180,6 +218,8 @@ struct ContentView: View {
                                         .stroke(ink.opacity(0.65), lineWidth: 1)
                                 )
                         }
+                        .offset(x: parallax.offset.width * 0.25,
+                                y: parallax.offset.height * 0.25)
                         .padding(.leading, leftInset)
                         .padding(.bottom, 20 + safeBottom * 0.3)
 
@@ -192,7 +232,10 @@ struct ContentView: View {
                             .scaleEffect(budFloat ? 1.32 : 1.25)
                             .rotationEffect(.degrees(budFloat ? -26 : -32))
                             .opacity(0.95)
-                            .offset(x: budOffsetX, y: budOffsetY)
+                            .offset(
+                                x: budOffsetX + parallax.offset.width * 0.55,
+                                y: budOffsetY + parallax.offset.height * 0.55
+                            )
                             .animation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true),
                                        value: budFloat)
                     }
@@ -226,8 +269,13 @@ struct ContentView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .background(background)
-                    .navigationTitle("Last 7 Notes")
                     .toolbar {
+                        ToolbarItem(placement: .principal) {
+                            Text("Last 7 Notes")
+                                .foregroundColor(ink)
+                                .font(.system(size: 28, weight: .semibold))
+                                .padding(.top, 18)
+                        }
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") { showHistory = false }
                                 .foregroundColor(ink)
@@ -240,6 +288,10 @@ struct ContentView: View {
                 planetFloat = true
                 budFloat = true
                 didAppear = true
+                parallax.start()
+            }
+            .onDisappear {
+                parallax.stop()
             }
         }
     }
